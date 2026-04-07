@@ -35,3 +35,6 @@ logs/
 # ML models
 backend/models/*.pkl
 backend/models/*.joblib
+
+#cluade
+.claude/
