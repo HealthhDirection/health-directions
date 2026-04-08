@@ -14,24 +14,36 @@ export default function HomePage() {
   const [busMarkers, setBusMarkers]   = useState([]);
   const [showBike, setShowBike]       = useState(true);
   const [showBus, setShowBus]         = useState(false);
+  const [bikeLoading, setBikeLoading] = useState(false);
+  const [busLoading, setBusLoading]   = useState(false);
+  const [stationError, setStationError] = useState(null);
 
   // 따릉이 대여소 로드
   useEffect(() => {
     if (!showBike) { setBikeMarkers([]); return; }
+
+    setBikeLoading(true);
+    setStationError(null);
     api.get("/stations/bike")
       .then((res) => setBikeMarkers(toBikeMarkers(res.data.stations ?? [])))
-      .catch(() => {});
+      .catch(() => setStationError("따릉이 대여소 데이터를 불러오지 못했습니다."))
+      .finally(() => setBikeLoading(false));
   }, [showBike]);
 
   // 버스 정류장 로드
   useEffect(() => {
     if (!showBus) { setBusMarkers([]); return; }
+
+    setBusLoading(true);
+    setStationError(null);
     api.get("/stations/bus")
       .then((res) => setBusMarkers(toBusMarkers(res.data.stops ?? [])))
-      .catch(() => {});
+      .catch(() => setStationError("버스 정류장 데이터를 불러오지 못했습니다."))
+      .finally(() => setBusLoading(false));
   }, [showBus]);
 
   const allMarkers = [...bikeMarkers, ...busMarkers];
+  const isLoading  = bikeLoading || busLoading;
 
   return (
     <div className="home-page">
@@ -57,20 +69,27 @@ export default function HomePage() {
             className={`btn ${showBike ? "btn-primary" : "btn-secondary"}`}
             style={{ flex: 1, fontSize: 12 }}
             onClick={() => setShowBike((v) => !v)}
+            disabled={bikeLoading}
           >
-            🚲 따릉이
+            {bikeLoading ? "로딩…" : "🚲 따릉이"}
           </button>
           <button
             className={`btn ${showBus ? "btn-primary" : "btn-secondary"}`}
             style={{ flex: 1, fontSize: 12 }}
             onClick={() => setShowBus((v) => !v)}
+            disabled={busLoading}
           >
-            🚌 버스정류장
+            {busLoading ? "로딩…" : "🚌 버스정류장"}
           </button>
         </div>
 
+        {/* 에러 메시지 */}
+        {stationError && (
+          <p style={{ fontSize: 12, color: "#dc2626" }}>⚠ {stationError}</p>
+        )}
+
         {/* 범례 */}
-        {showBike && (
+        {showBike && !bikeLoading && (
           <div style={{ display: "flex", gap: 10, fontSize: 11, color: "#6b7280" }}>
             <span style={{ color: "#16a34a" }}>● 3대+</span>
             <span style={{ color: "#d97706" }}>● 1~2대</span>

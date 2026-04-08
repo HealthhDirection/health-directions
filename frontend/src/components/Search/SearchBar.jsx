@@ -1,9 +1,5 @@
 /**
  * 출발/도착 검색 바 + Kakao Places 자동완성.
- *
- * props:
- *   onSearch  ({ origin, destination }) => void
- *             origin/destination: { lat, lng, name }
  */
 
 import { useState, useRef, useEffect } from "react";
@@ -87,12 +83,22 @@ function PlaceInput({ placeholder, icon, value, onChange, onSelect }) {
 export default function SearchBar() {
   const navigate = useNavigate();
   const { origin, destination, setOrigin, setDestination, setLoading } = useRouteStore();
+  const [validationError, setValidationError] = useState(null);
 
   const handleSearch = () => {
-    if (!origin || !destination) {
-      alert("출발지와 도착지를 모두 입력하세요.");
+    if (!origin && !destination) {
+      setValidationError("출발지와 도착지를 입력해주세요.");
       return;
     }
+    if (!origin) {
+      setValidationError("출발지를 입력해주세요.");
+      return;
+    }
+    if (!destination) {
+      setValidationError("도착지를 입력해주세요.");
+      return;
+    }
+    setValidationError(null);
     setLoading(true);
     navigate(`/routes?olat=${origin.lat}&olng=${origin.lng}&dlat=${destination.lat}&dlng=${destination.lng}`);
   };
@@ -104,19 +110,23 @@ export default function SearchBar() {
         icon="📍"
         value={origin}
         onChange={setOrigin}
-        onSelect={setOrigin}
+        onSelect={(v) => { setOrigin(v); setValidationError(null); }}
       />
       <PlaceInput
         placeholder="도착지를 입력하세요"
         icon="🏁"
         value={destination}
         onChange={setDestination}
-        onSelect={setDestination}
+        onSelect={(v) => { setDestination(v); setValidationError(null); }}
       />
+      {validationError && (
+        <p style={{ fontSize: 12, color: "#dc2626", margin: "-2px 0 0" }}>
+          ⚠ {validationError}
+        </p>
+      )}
       <button
         className="btn btn-primary"
         onClick={handleSearch}
-        disabled={!origin || !destination}
         style={{ width: "100%" }}
       >
         경로 검색
