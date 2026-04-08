@@ -1,0 +1,110 @@
+# 건강길찾기 (Health Directions) — 할 일 목록
+
+## Phase 1: 데이터 기반 (1~2주차)
+
+### 환경 설정
+- [ ] 프로젝트 스캐폴딩 (backend/app 디렉토리 구조 생성)
+- [ ] .env 파일 작성 (.env.example 참고, API 키 등록)
+- [ ] Docker Compose로 Redis 컨테이너 실행 확인
+- [ ] PostgreSQL `gangseo_transit` DB 생성 (port 5433)
+
+### DB 초기화
+- [ ] DB 스키마 3개 초기화 (`backend/app/db/init.py`)
+  - master (정적 참조 데이터)
+  - realtime (자주 갱신)
+  - history (ML 학습용)
+- [ ] PG / Redis 연결 설정 (`backend/app/db/connection.py`)
+
+### API 검증
+- [ ] 버스 API 실제 호출 검증 + 응답 구조 확인
+- [ ] 따릉이 API 실제 호출 검증 + 응답 구조 확인
+- [ ] 신호등 API 실제 호출 검증 + 응답 구조 확인
+- [ ] `korean_api.py` 공통 래퍼 구현 (XML 인코딩 자동 감지, 에러코드 매핑)
+
+### 마스터 데이터 적재
+- [ ] `scripts/seed_master_data.py` 작성
+- [ ] 마스터 데이터 적재 실행 (강서구: lat 37.53–37.58, lng 126.80–126.88)
+  - bus_stops, bus_routes
+  - bike_stations
+  - intersections
+
+### 수집기
+- [ ] `BaseCollector` 구현 (재시도, 로깅, 속도제한) — `collectors/base.py`
+- [ ] `bus_collector.py` 구현 (버스 도착 2분, 버스 위치 5분 주기)
+- [ ] `bike_collector.py` 구현 (따릉이 가용 3분 주기)
+- [ ] `signal_collector.py` 구현 (신호등 상태 3분 주기)
+- [ ] APScheduler 오케스트레이션 (`collectors/scheduler.py`)
+- [ ] Redis 캐시 저장/조회 확인
+
+---
+
+## Phase 2: 추천 엔진 (3~4주차)
+
+### 유틸리티
+- [ ] `geo.py` 구현 (Haversine, 바운딩박스, 최근접 정류장)
+
+### 경로 엔진
+- [ ] TMAP 대중교통/도보 API 연동 + 100m 그리드 캐시
+- [ ] `route_finder.py`: 후보 경로 생성
+  - 버스만
+  - 버스 + 자전거
+  - 도보 + 자전거 (3km 미만)
+- [ ] `time_estimator.py`: TMAP 베이스 + 신호등 지연 보정
+  - 도보 구간 교차로 식별 (50m 이내)
+  - 보행 신호 잔여시간으로 지연 계산
+  - 데이터 없으면 cycle_time/2 통계 평균 사용
+- [ ] `route_scorer.py`: 다기준 점수화
+  - 속도 0.4 / 안정성 0.25 / 자전거확률 0.2 / 편의성 0.15
+
+### FastAPI 엔드포인트
+- [ ] `GET /api/routes` — 경로 추천 (`api/routes.py`)
+- [ ] `GET /api/stations/bike` — 따릉이 대여소 (`api/stations.py`)
+- [ ] `GET /api/stations/bus` — 버스 정류장 (`api/stations.py`)
+- [ ] `GET /api/status` — 데이터 신선도 (`api/status.py`)
+- [ ] API 통합 테스트 작성 (`tests/test_api/`)
+
+---
+
+## Phase 3: AI 레이어 (5주차)
+
+- [ ] 규칙 기반 자전거 가용성 예측 구현 (`bike_predictor.py` 1단계)
+  - 현재 수량 + 시간대별 소모율 → 도착 시점 수량 추정
+  - 3대 이상 → 95%, 1대 이상 → 70%, 0대 → 최소 10%
+- [ ] realtime → `history.bike_hourly` 시간별 집계 배치 잡 구현
+- [ ] ML 학습 파이프라인 준비 (LightGBM)
+  - 피처: hour, day_of_week, current_bikes, 15분 추세, rack_count, minutes_ahead
+- [ ] history 데이터 2~4주 축적 후 ML 모델 학습 및 `bike_predictor.py` 2단계 교체
+
+---
+
+## Phase 4: 프론트엔드 (6~7주차)
+
+### 기반 설정
+- [ ] Kakao Maps JS SDK 통합 (`components/Map/KakaoMap`)
+- [ ] axios 인스턴스 설정 (`src/utils/`)
+- [ ] zustand 상태 관리 설정 (`src/store/`)
+
+### 컴포넌트
+- [ ] `SearchBar` + `PlaceSuggestion` (출발/도착 자동완성)
+- [ ] `RouteList` + `RouteCard` + `BikeAvailability`
+- [ ] `RouteOverlay` (지도 위 폴리라인)
+- [ ] `StationMarker` (버스/따릉이 마커)
+
+### 페이지
+- [ ] `HomePage` 구성
+- [ ] `RoutePage` 구성
+- [ ] 반응형 레이아웃 (모바일 우선)
+
+---
+
+## Phase 5: 통합 & 마무리 (8주차)
+
+- [ ] E2E 테스트 작성 및 실행
+- [ ] 에러 처리 & 로딩 상태 전반 점검
+- [ ] 성능 최적화
+  - DB 쿼리 인덱스 검토
+  - Redis 캐시 TTL 튜닝
+  - TMAP 그리드 캐시 적중률 확인
+- [ ] UI에 "추정"/"신호반영" 구분 표시
+- [ ] UI에 따릉이 "N분 전 기준" 표시
+- [ ] 공모전 제출 전 최종 검토
