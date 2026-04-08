@@ -45,7 +45,7 @@
 
 ### 경로 엔진
 - [x] TMAP 대중교통/도보 API 연동 (`route_finder.py`)
-- [ ] TMAP 100m 그리드 캐시 구현
+- [x] TMAP 100m 그리드 캐시 구현
 - [x] `route_finder.py`: 후보 경로 생성
   - 버스만
   - 버스 + 자전거
@@ -62,7 +62,7 @@
 - [x] `GET /api/stations/bike` — 따릉이 대여소 (`api/stations.py`)
 - [x] `GET /api/stations/bus` — 버스 정류장 (`api/stations.py`)
 - [x] `GET /api/status` — 데이터 신선도 (`api/status.py`)
-- [ ] API 통합 테스트 작성 (`tests/test_api/`)
+- [x] API 통합 테스트 작성 (`tests/test_api/`)
 
 ---
 
@@ -71,7 +71,7 @@
 - [x] 규칙 기반 자전거 가용성 예측 구현 (`bike_predictor.py` 1단계)
   - 현재 수량 + 시간대별 소모율 → 도착 시점 수량 추정
   - 3대 이상 → 95%, 1대 이상 → 70%, 0대 → 최소 10%
-- [ ] realtime → `history.bike_hourly` 시간별 집계 배치 잡 구현
+- [x] realtime → `history.bike_hourly` 시간별 집계 배치 잡 구현
 - [ ] ML 학습 파이프라인 준비 (LightGBM)
   - 피처: hour, day_of_week, current_bikes, 15분 추세, rack_count, minutes_ahead
 - [ ] history 데이터 2~4주 축적 후 ML 모델 학습 및 `bike_predictor.py` 2단계 교체
@@ -82,19 +82,19 @@
 
 ### 기반 설정
 - [x] Kakao Maps JS SDK 통합 (`components/Map/KakaoMap.jsx`)
-- [ ] axios 인스턴스 설정 (`src/utils/`)
+- [x] axios 인스턴스 설정 (`src/utils/api.js`)
 - [x] zustand 상태 관리 설정 (`src/store/routeStore.js`)
 
 ### 컴포넌트
 - [x] `SearchBar` + `PlaceSuggestion` (`components/Search/SearchBar.jsx`)
 - [x] `RouteList` + `RouteCard` + `BikeAvailability` (`components/Route/`)
-- [ ] `RouteOverlay` (지도 위 폴리라인)
-- [ ] `StationMarker` (버스/따릉이 마커)
+- [x] `RouteOverlay` (지도 위 폴리라인 스타일 유틸)
+- [x] `StationMarker` (버스/따릉이 마커 변환 유틸)
 
 ### 페이지
 - [x] `HomePage` 구성 (`pages/HomePage.jsx`)
 - [x] `RoutePage` 구성 (`pages/RoutePage.jsx`)
-- [ ] 반응형 레이아웃 (모바일 우선)
+- [x] 반응형 레이아웃 (모바일 우선, `src/index.css`)
 
 ---
 
@@ -106,6 +106,6 @@
   - DB 쿼리 인덱스 검토
   - Redis 캐시 TTL 튜닝
   - TMAP 그리드 캐시 적중률 확인
-- [ ] UI에 "추정"/"신호반영" 구분 표시
-- [ ] UI에 따릉이 "N분 전 기준" 표시
+- [x] UI에 "추정"/"신호반영" 구분 표시 (RouteCard 신호반영 뱃지 + RoutePage 안내문)
+- [x] UI에 따릉이 "N분 전 기준" 표시 (BikeAvailability ahead prop)
 - [ ] 공모전 제출 전 최종 검토
