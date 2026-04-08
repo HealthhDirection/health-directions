@@ -22,7 +22,10 @@ class Settings(BaseSettings):
     gangseo_lng_min: float = 126.80
     gangseo_lng_max: float = 126.88
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": [".env", "../.env"],  # backend/.env 우선, 없으면 루트 .env 사용
+        "env_file_encoding": "utf-8",
+    }
 
 
 settings = Settings()
