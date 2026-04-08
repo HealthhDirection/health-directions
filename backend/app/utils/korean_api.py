@@ -74,3 +74,22 @@ def parse_json_response(resp: httpx.Response) -> dict:
                 raise KoreanApiError(code, msg)
 
     return data
+
+
+def parse_rti_response(resp: httpx.Response) -> dict:
+    """B551982/rti API JSON 응답을 파싱한다.
+
+    성공: header.resultCode == "K0"
+    실패: 그 외 코드 → KoreanApiError
+    반환: body dict
+    """
+    data = resp.json()
+
+    header = data.get("header", {})
+    result_code = header.get("resultCode", "")
+    result_msg = header.get("resultMsg", "")
+
+    if result_code != "K0":
+        raise KoreanApiError(result_code, result_msg)
+
+    return data.get("body", {})
