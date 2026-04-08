@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     # TMAP
     tmap_app_key: str = ""
 
+    # 로깅
+    log_level: str = "INFO"
+    log_dir: str = "logs"
+
     # 강서구 바운딩박스
     gangseo_lat_min: float = 37.53
     gangseo_lat_max: float = 37.58
@@ -25,6 +29,7 @@ class Settings(BaseSettings):
     model_config = {
         "env_file": [".env", "../.env"],  # backend/.env 우선, 없으면 루트 .env 사용
         "env_file_encoding": "utf-8",
+        "extra": "ignore",
     }
 
 

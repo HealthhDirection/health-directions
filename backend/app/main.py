@@ -1,8 +1,33 @@
-from fastapi import FastAPI
+import time
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger
 
 from app.api import routes, signals, stations, status
 from app.config import settings
+from app.utils.logging import setup_logging
+
+# 서버 기동 직후 로깅 초기화 (uvicorn import 전에 설정)
+setup_logging(log_level=settings.log_level, log_dir=settings.log_dir)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("건강길찾기 API 시작 (v{})", app.version)
+    logger.info(
+        "설정: PG={}, Redis={}, TMAP={}, BUS={}, BIKE={}, SIGNAL={}",
+        bool(settings.pg_dsn),
+        bool(settings.redis_url),
+        bool(settings.tmap_app_key),
+        bool(settings.bus_api_key),
+        bool(settings.bike_api_key),
+        bool(settings.signal_api_key),
+    )
+    yield
+    logger.info("건강길찾기 API 종료")
+
 
 app = FastAPI(
     title="건강길찾기 API (Health Directions)",
@@ -19,7 +44,28 @@ app = FastAPI(
         "Swagger에서 `api_key` 파라미터에 키를 직접 입력하여 테스트할 수 있습니다."
     ),
     version="0.1.0",
+    lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """모든 HTTP 요청/응답을 로깅한다."""
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = int((time.perf_counter() - start) * 1000)
+
+    level = "WARNING" if response.status_code >= 400 else "INFO"
+    logger.log(
+        level,
+        "{} {} → {} ({}ms)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
+
 
 app.add_middleware(
     CORSMiddleware,
