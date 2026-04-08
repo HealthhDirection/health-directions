@@ -38,11 +38,12 @@ CREATE TABLE IF NOT EXISTS master.bike_stations (
 );
 
 -- 교통 신호 교차로
+-- longitude: RTI API가 경도 미제공, TMAP geocoding으로 보완 시 채워짐
 CREATE TABLE IF NOT EXISTS master.intersections (
     intersection_id TEXT PRIMARY KEY,
     intersection_name TEXT,
     latitude      DOUBLE PRECISION NOT NULL,
-    longitude     DOUBLE PRECISION NOT NULL,
+    longitude     DOUBLE PRECISION,
     direction_count INT,
     signal_meta   JSONB,
     created_at    TIMESTAMPTZ DEFAULT now()
