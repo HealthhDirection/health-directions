@@ -17,6 +17,12 @@ BIKE_STATION_SEARCH_RADIUS_M = 400
 WALK_ONLY_MAX_DIST_M = 3000
 INTERSECTION_SEARCH_RADIUS_M = 100  # 경로 상 교차로 검색 반경
 
+# 교차로 100m 그리드 캐시 설정
+# 서울 위도 37.5° 기준: 0.001° ≈ 111m(위도) / 88m(경도)
+GRID_STEP = 0.001
+GRID_CACHE_TTL = 3600  # 1시간
+GRID_POPULATED_KEY = "intersec:grid:v1:populated"
+
 
 class RouteFinder:
     def __init__(self, pg_conn, redis_client):
@@ -229,29 +235,92 @@ class RouteFinder:
             logger.error("DB 교차로 조회 실패: {}", str(e))
         return []
 
+    # ── 100m 그리드 캐시 메서드 ────────────────────────────────────────────
+
+    def _grid_key(self, lat: float, lng: float) -> str:
+        """위경도를 GRID_STEP 단위로 스냅하여 Redis 키를 반환한다."""
+        lat_g = round(round(lat / GRID_STEP) * GRID_STEP, 3)
+        lng_g = round(round(lng / GRID_STEP) * GRID_STEP, 3)
+        return f"intersec:grid:{lat_g:.3f}:{lng_g:.3f}"
+
+    def _populate_intersection_grid(self, intersections: list[dict]) -> None:
+        """교차로 목록을 100m 그리드로 분할하여 Redis 파이프라인으로 캐시한다."""
+        grid: dict[str, list[dict]] = {}
+        for inter in intersections:
+            key = self._grid_key(inter["latitude"], inter["longitude"])
+            grid.setdefault(key, []).append(inter)
+
+        try:
+            pipe = self.redis.pipeline()
+            for key, items in grid.items():
+                pipe.setex(key, GRID_CACHE_TTL, json.dumps(items))
+            pipe.setex(GRID_POPULATED_KEY, GRID_CACHE_TTL, "1")
+            pipe.execute()
+            logger.debug("교차로 그리드 캐시 저장: {} 셀", len(grid))
+        except Exception as e:
+            logger.warning("교차로 그리드 캐시 파이프라인 실패: {}", e)
+
+    def _ensure_intersection_grid(self) -> bool:
+        """그리드 캐시 미존재 시 DB에서 로드하여 채운다. 성공 여부를 반환한다."""
+        try:
+            if self.redis.get(GRID_POPULATED_KEY):
+                return True
+        except Exception:
+            pass
+
+        intersections = self._load_intersections_from_db()
+        if not intersections:
+            return False
+        self._populate_intersection_grid(intersections)
+        return True
+
+    def _query_intersection_grid(self, lat: float, lng: float) -> list[dict]:
+        """주어진 좌표 주변 3x3 그리드 셀에서 교차로 후보를 반환한다."""
+        base_lat = round(round(lat / GRID_STEP) * GRID_STEP, 3)
+        base_lng = round(round(lng / GRID_STEP) * GRID_STEP, 3)
+
+        keys = [
+            self._grid_key(
+                round(base_lat + dlat * GRID_STEP, 3),
+                round(base_lng + dlng * GRID_STEP, 3),
+            )
+            for dlat in (-1, 0, 1)
+            for dlng in (-1, 0, 1)
+        ]
+
+        candidates: list[dict] = []
+        try:
+            values = self.redis.mget(keys)
+            for raw in values:
+                if raw:
+                    candidates.extend(json.loads(raw))
+        except Exception as e:
+            logger.warning("교차로 그리드 캐시 조회 실패: {}", e)
+        return candidates
+
     def _find_intersections_along_route(self, polyline: list[dict]) -> list[dict]:
         """폴리라인 주변 100m 이내 교차로를 중복 없이 반환한다.
 
-        경도가 없는 교차로(_load_intersections_from_db에서 이미 제외됨)는 매칭 대상에서 빠진다.
+        Redis 100m 그리드 캐시 우선 조회, 미캐시 시 DB 로드 후 캐시 저장.
         """
         if not polyline:
             return []
 
-        all_intersections = self._load_intersections_from_db()
-        if not all_intersections:
+        if not self._ensure_intersection_grid():
             return []
 
         seen_ids: set[str] = set()
         result: list[dict] = []
 
-        # 폴리라인 포인트 샘플링 (과도한 DB 부하 방지: 최대 20개 포인트)
+        # 폴리라인 포인트 샘플링 (최대 20개)
         step = max(1, len(polyline) // 20)
         sampled = polyline[::step]
 
         for point in sampled:
+            candidates = self._query_intersection_grid(point["lat"], point["lng"])
             nearest = find_nearest(
                 point["lat"], point["lng"],
-                all_intersections,
+                candidates,
                 lat_key="latitude", lng_key="longitude",
                 max_dist_m=INTERSECTION_SEARCH_RADIUS_M,
                 top_n=3,
