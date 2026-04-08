@@ -29,14 +29,16 @@
 ## 가장 중요한건 공용데이터를 사용하는거야
 
 ### 버스 데이터 API
+
 - 엔드포인트: https://apis.data.go.kr/B551982/rte
 - 3가지 방식:
   1. `/mst_info` - 노선 기본 정보
-  2. `/ps_info` - 노선 경유지 정보  
+  2. `/ps_info` - 노선 경유지 정보
   3. `/rtm_loc_info` - 버스 실시간 위치 정보
 - 📄 상세: `bus사용법.md`
 
 ### 신호등 데이터 API
+
 - 엔드포인트: https://apis.data.go.kr/B551982/rti
 - 2가지 방식:
   1. `/crsrd_map_info` - 교차로 위치 정보
@@ -45,6 +47,7 @@
 - 📄 상세: `signal사용법.md`
 
 ### 공영자전거(따릉이) 데이터 API
+
 - 엔드포인트: https://apis.data.go.kr/B551982/pbdo_v2
 - 3가지 방식:
   1. `/inf_101_00010001_v2` - 대여소 기본 정보 (위치, 주소, 운영시간)
@@ -58,6 +61,7 @@
 ## 로컬 개발 서버 실행
 
 ### Python 경로
+
 ```
 C:\Users\chanbongg\AppData\Local\Programs\Python\Python311\python.exe
 ```
@@ -94,17 +98,18 @@ pip install -r requirements.txt
 
 베이스 URL: `https://apis.data.go.kr/B551982/rti`
 
-| 엔드포인트 | 설명 | 주요 파라미터 |
-|------------|------|--------------|
+| 엔드포인트          | 설명                                     | 주요 파라미터                                       |
+| ------------------- | ---------------------------------------- | --------------------------------------------------- |
 | `/crsrd_map_info` | 교차로 위치 정보 (교차로 ID, 이름, 위도) | `stdgCd=1100000000` (서울시, 구 단위 코드 미지원) |
-| `/tl_drct_info` | 교차로별 8방향 신호 잔여시간 실시간 | `stdgCd=1100000000` |
+| `/tl_drct_info`   | 교차로별 8방향 신호 잔여시간 실시간      | `stdgCd=1100000000`                               |
 
-**주의**: `stdgCd`는 시(市) 단위 코드만 지원. 강서구 코드(`1150000000`)는 빈 결과 반환.  
+**주의**: `stdgCd`는 시(市) 단위 코드만 지원. 강서구 코드(`1150000000`)는 빈 결과 반환.
 **주의**: `mapCtptIntLot`(경도) 필드가 현재 API에서 빈 값으로 반환됨 → TMAP geocoding으로 보완.
 
 ### DB 테이블
 
 #### `master.intersections` — 교차로 마스터
+
 ```sql
 SELECT intersection_id, intersection_name, latitude, longitude
 FROM master.intersections
@@ -112,6 +117,7 @@ WHERE longitude IS NOT NULL;  -- 경도가 있는 교차로만 (경로 매칭에
 ```
 
 #### `realtime.signal_state` — 수집된 신호 상태
+
 ```sql
 -- 특정 교차로 최신 신호
 SELECT direction, current_phase, remaining_sec, collected_at
@@ -130,13 +136,13 @@ LIMIT 8;
 
 ### 신호 상태명 매핑
 
-| API 값 | 의미 |
-|--------|------|
-| `protected-Movement-Allowed` | GREEN (진행 가능) |
-| `permissive-Movement-Allowed` | GREEN |
-| `stop-And-Remain` | RED (정지) |
-| `protected-clearance` | YELLOW |
-| `permissive-clearance` | YELLOW |
+| API 값                          | 의미              |
+| ------------------------------- | ----------------- |
+| `protected-Movement-Allowed`  | GREEN (진행 가능) |
+| `permissive-Movement-Allowed` | GREEN             |
+| `stop-And-Remain`             | RED (정지)        |
+| `protected-clearance`         | YELLOW            |
+| `permissive-clearance`        | YELLOW            |
 
 ### 잔여시간 단위
 
@@ -162,3 +168,9 @@ python scripts/seed_master_data.py
 1. `GET /api/signals/live` — `api_key` 파라미터에 공공데이터포털 인증키 입력
 2. `GET /api/signals/intersections` — 교차로 목록 조회 (경도 미제공 확인 가능)
 3. `GET /config/check` — 서버에 설정된 API 키 현황 확인
+
+# todo.md확인하기
+
+# plan.md 확인하기
+
+# %사용법.md 확인하기
