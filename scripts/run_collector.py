@@ -16,11 +16,15 @@ from app.collectors.scheduler import create_scheduler
 
 def main():
     logger.info("수집기 시작")
-    scheduler = create_scheduler()
+    scheduler, collectors = create_scheduler()
     try:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
-        logger.info("수집기 종료")
+        logger.info("수집기 종료 중...")
+    finally:
+        for collector in collectors:
+            collector.close()
+        logger.info("수집기 종료 완료")
 
 
 if __name__ == "__main__":
