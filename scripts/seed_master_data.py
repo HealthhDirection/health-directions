@@ -23,72 +23,85 @@ GANGSEO_LAT = 37.5509
 GANGSEO_LNG = 126.8495
 GANGSEO_RADIUS_M = 5000
 
-# 버스 정류장 좌표 기반 조회 API
-BUS_STOP_BY_POS_URL = "http://ws.bus.go.kr/api/rest/stationinfo/getStationByPos"
+# 버스 경유지 정보 API (정류소 ID + 좌표 포함)
+BUS_PS_INFO_URL = "https://apis.data.go.kr/B551982/rte/ps_info"
+GANGSEO_STDG_CD = "1150000000"
 
-# 따릉이 대여소 목록 API
-BIKE_LIST_URL = "http://openapi.seoul.go.kr:8088/{api_key}/json/bikeList/{start}/{end}/"
+# 따릉이 대여소 기본 정보 API (공공데이터포털)
+BIKE_STATION_INFO_URL = "https://apis.data.go.kr/B551982/pbdo_v2/inf_101_00010001_v2"
+SEOUL_BIKE_STDG_CD = "1100000000"
+
+# 강서구 좌표 범위
+GANGSEO_LAT_MIN, GANGSEO_LAT_MAX = 37.53, 37.58
+GANGSEO_LNG_MIN, GANGSEO_LNG_MAX = 126.80, 126.88
 
 PAGE_SIZE = 1000
 
 
 def seed_bus_stops(conn, api_key: str) -> int:
-    """강서구 버스 정류장을 master.bus_stops에 UPSERT한다."""
-    logger.info("버스 정류장 수집 시작...")
+    """강서구 버스 정류장을 master.bus_stops에 UPSERT한다.
+
+    ps_info 엔드포인트에서 노선 경유지 전체를 수집하고
+    강서구 좌표 범위로 필터링한다.
+    """
+    logger.info("버스 정류장 수집 시작 (ps_info 전체 수집 후 강서구 필터)...")
 
     client = httpx.Client(timeout=15.0)
+    seen: dict[str, dict] = {}  # stop_id → record (중복 제거)
+    page_no = 1
+
     try:
-        resp = client.get(BUS_STOP_BY_POS_URL, params={
-            "ServiceKey": api_key,
-            "tmX": GANGSEO_LNG,
-            "tmY": GANGSEO_LAT,
-            "radius": GANGSEO_RADIUS_M,
-        })
-        resp.raise_for_status()
-        root = parse_xml_response(resp.content)
-    except KoreanApiError as e:
-        logger.error(f"버스 정류장 API 에러: {e}")
-        return 0
-    except Exception as e:
-        logger.error(f"버스 정류장 API 호출 실패: {e}")
-        return 0
+        while True:
+            try:
+                resp = client.get(BUS_PS_INFO_URL, params={
+                    "serviceKey": api_key,
+                    "pageNo": page_no,
+                    "numOfRows": PAGE_SIZE,
+                    "type": "JSON",
+                })
+                resp.raise_for_status()
+                body = parse_rti_response(resp)
+            except KoreanApiError as e:
+                logger.error(f"버스 경유지 API 에러 (page={page_no}): {e}")
+                break
+            except Exception as e:
+                logger.error(f"버스 경유지 API 호출 실패 (page={page_no}): {e}")
+                break
+
+            items = body.get("items", {}).get("item", [])
+            if not isinstance(items, list):
+                items = [items] if items else []
+            if not items:
+                break
+
+            for item in items:
+                stop_id = str(item.get("bstaId", "")).strip()
+                stop_name = str(item.get("bstaNm", "")).strip()
+                try:
+                    lat = float(item.get("bstaLat") or 0)
+                    lng = float(item.get("bstaLot") or 0)
+                except (ValueError, TypeError):
+                    continue
+
+                if not stop_id or not stop_name or lat == 0 or lng == 0:
+                    continue
+                if not (GANGSEO_LAT_MIN <= lat <= GANGSEO_LAT_MAX and
+                        GANGSEO_LNG_MIN <= lng <= GANGSEO_LNG_MAX):
+                    continue
+
+                seen[stop_id] = {"stop_id": stop_id, "stop_name": stop_name,
+                                 "latitude": lat, "longitude": lng}
+
+            total_count = int(body.get("totalCount", 0))
+            if page_no * PAGE_SIZE >= total_count:
+                break
+            page_no += 1
     finally:
         client.close()
 
-    items = root.findall(".//itemList")
-    if not items:
-        logger.warning("버스 정류장 API 응답에 데이터 없음")
-        return 0
-
-    records = []
-    for item in items:
-        def get_text(tag: str) -> str | None:
-            el = item.find(tag)
-            return el.text.strip() if el is not None and el.text else None
-
-        stop_id = get_text("arsId")
-        stop_name = get_text("stNm")
-        lat_str = get_text("tmY")
-        lng_str = get_text("tmX")
-
-        if not stop_id or not stop_name or not lat_str or not lng_str:
-            continue
-
-        try:
-            lat = float(lat_str)
-            lng = float(lng_str)
-        except ValueError:
-            continue
-
-        records.append({
-            "stop_id": stop_id,
-            "stop_name": stop_name,
-            "latitude": lat,
-            "longitude": lng,
-        })
-
+    records = list(seen.values())
     if not records:
-        logger.warning("유효한 버스 정류장 데이터 없음")
+        logger.warning("강서구 범위 버스 정류장 없음")
         return 0
 
     sql = """
@@ -113,67 +126,67 @@ def seed_bus_stops(conn, api_key: str) -> int:
 
 
 def seed_bike_stations(conn, api_key: str) -> int:
-    """강서구 따릉이 대여소를 master.bike_stations에 UPSERT한다."""
-    logger.info("따릉이 대여소 수집 시작...")
+    """강서구 따릉이 대여소를 master.bike_stations에 UPSERT한다.
+
+    공공데이터포털 pbdo_v2/inf_101_00010001_v2에서 서울시 전체를 수집하고
+    강서구 좌표 범위로 필터링한다.
+    """
+    logger.info("따릉이 대여소 수집 시작 (pbdo_v2 inf_101_00010001_v2)...")
 
     client = httpx.Client(timeout=15.0)
-    all_rows = []
-    start = 1
+    all_items: list[dict] = []
+    page_no = 1
 
     try:
         while True:
-            end = start + PAGE_SIZE - 1
-            url = BIKE_LIST_URL.format(api_key=api_key, start=start, end=end)
             try:
-                resp = client.get(url)
+                resp = client.get(BIKE_STATION_INFO_URL, params={
+                    "serviceKey": api_key,
+                    "lcgvmnInstCd": SEOUL_BIKE_STDG_CD,
+                    "pageNo": page_no,
+                    "numOfRows": PAGE_SIZE,
+                    "type": "JSON",
+                })
                 resp.raise_for_status()
-                data = parse_json_response(resp)
-                rows = data.get("rentBikeStatus", {}).get("row", [])
+                body = parse_rti_response(resp)
             except KoreanApiError as e:
-                if e.code == "INFO-200":
+                if e.code in ("INFO-200", "03"):
                     break
-                logger.error(f"따릉이 API 에러 (start={start}): {e}")
+                logger.error(f"따릉이 API 에러 (page={page_no}): {e}")
                 break
             except Exception as e:
-                logger.error(f"따릉이 API 호출 실패 (start={start}): {e}")
+                logger.error(f"따릉이 API 호출 실패 (page={page_no}): {e}")
                 break
 
-            if not rows:
+            items = body.get("item", [])
+            if not isinstance(items, list):
+                items = [items] if items else []
+            if not items:
                 break
 
-            all_rows.extend(rows)
+            all_items.extend(items)
 
-            if len(rows) < PAGE_SIZE:
+            total_count = int(body.get("totalCount", 0))
+            if page_no * PAGE_SIZE >= total_count:
                 break
-            start += PAGE_SIZE
+            page_no += 1
     finally:
         client.close()
 
-    # 강서구 대여소만 필터 (stationName에 '강서' 포함)
-    gangseo_rows = [row for row in all_rows if "강서" in row.get("stationName", "")]
-
-    if not gangseo_rows:
-        logger.warning("강서구 따릉이 대여소 없음")
-        return 0
-
     records = []
-    for row in gangseo_rows:
-        station_id = row.get("stationId", "")
-        station_name = row.get("stationName", "")
-
-        # 위도/경도는 bikeList API에서 제공하지 않는 경우가 있음 → 0.0으로 기본값
+    for item in all_items:
+        station_id = str(item.get("rntstnId", "")).strip()
+        station_name = str(item.get("rntstnNm", "")).strip()
         try:
-            lat = float(row.get("stationLatitude") or 0.0)
-            lng = float(row.get("stationLongitude") or 0.0)
+            lat = float(item.get("lat") or 0)
+            lng = float(item.get("lot") or 0)
         except (ValueError, TypeError):
-            lat, lng = 0.0, 0.0
+            continue
 
-        try:
-            rack_count = int(row.get("rackTotCnt") or 0)
-        except (ValueError, TypeError):
-            rack_count = 0
-
-        if not station_id or not station_name:
+        if not station_id or not station_name or lat == 0 or lng == 0:
+            continue
+        if not (GANGSEO_LAT_MIN <= lat <= GANGSEO_LAT_MAX and
+                GANGSEO_LNG_MIN <= lng <= GANGSEO_LNG_MAX):
             continue
 
         records.append({
@@ -181,11 +194,11 @@ def seed_bike_stations(conn, api_key: str) -> int:
             "station_name": station_name,
             "latitude": lat,
             "longitude": lng,
-            "rack_count": rack_count,
+            "rack_count": 0,
         })
 
     if not records:
-        logger.warning("유효한 따릉이 대여소 데이터 없음")
+        logger.warning("강서구 범위 따릉이 대여소 없음")
         return 0
 
     sql = """
