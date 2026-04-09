@@ -163,12 +163,6 @@ python scripts/seed_master_data.py
 `seed_master_data.py` 실행 시 `SIGNAL_API_KEY`와 `TMAP_APP_KEY`가 설정되어 있어야
 교차로 데이터와 경도가 올바르게 적재됨.
 
-### Swagger에서 신호등 API 테스트
-
-1. `GET /api/signals/live` — `api_key` 파라미터에 공공데이터포털 인증키 입력
-2. `GET /api/signals/intersections` — 교차로 목록 조회 (경도 미제공 확인 가능)
-3. `GET /config/check` — 서버에 설정된 API 키 현황 확인
-
 # todo.md확인하기
 
 # plan.md 확인하기
