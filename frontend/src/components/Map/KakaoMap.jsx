@@ -36,12 +36,15 @@ export default function KakaoMap({
     }
 
     const initMap = () => {
+      console.log("[KakaoMap] initMap 호출됨, window.kakao:", !!window.kakao);
       window.kakao.maps.load(() => {
+        console.log("[KakaoMap] kakao.maps.load 콜백 실행, container:", containerRef.current);
         const mapOptions = {
           center: new window.kakao.maps.LatLng(center.lat, center.lng),
           level: zoom,
         };
         mapRef.current = new window.kakao.maps.Map(containerRef.current, mapOptions);
+        console.log("[KakaoMap] 지도 생성 완료");
 
         if (onMapClick) {
           window.kakao.maps.event.addListener(mapRef.current, "click", (mouseEvent) => {
@@ -63,8 +66,10 @@ export default function KakaoMap({
       const script = document.createElement("script");
       script.setAttribute("data-kakao-maps", "1");
       script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${apiKey}&libraries=services&autoload=false`;
-      script.onload = initMap;
+      script.onload = () => { console.log("[KakaoMap] SDK 스크립트 로드됨"); initMap(); };
+      script.onerror = (e) => console.error("[KakaoMap] SDK 스크립트 로드 실패", e);
       document.head.appendChild(script);
+      console.log("[KakaoMap] 스크립트 추가됨, src:", script.src);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
