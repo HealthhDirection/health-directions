@@ -133,19 +133,18 @@ class RouteFinder:
             elif mode in ("BUS", "SUBWAY", "RAIL"):
                 transfers += 1
 
-            # 좌표 리스트 추출
+            # 좌표 리스트 추출 (형식: "경도1 위도1 경도2 위도2 ...")
             points = leg.get("passShape", {}).get("linestring", "")
             if points:
-                for coord_str in points.split(" "):
-                    parts = coord_str.split(",")
-                    if len(parts) == 2:
-                        try:
-                            polyline.append({
-                                "lng": float(parts[0]),
-                                "lat": float(parts[1]),
-                            })
-                        except ValueError:
-                            pass
+                parts = points.split()
+                for i in range(0, len(parts) - 1, 2):
+                    try:
+                        polyline.append({
+                            "lng": float(parts[i]),
+                            "lat": float(parts[i + 1]),
+                        })
+                    except ValueError:
+                        pass
 
         # 환승 수는 대중교통 leg 수 - 1 (최소 0)
         transfers = max(0, transfers - 1)
