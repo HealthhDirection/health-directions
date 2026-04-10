@@ -36,5 +36,9 @@ logs/
 backend/models/*.pkl
 backend/models/*.joblib
 
-#cluade
+#claude
 .claude/
+
+# Data files
+*.xlsx
+*.csv
