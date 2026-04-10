@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # PostgreSQL
-    pg_dsn: str = "postgresql://postgres:password@localhost:5433/gangseo_transit"
+    pg_dsn: str = "postgresql://postgres:password@localhost:5432/gangseo_transit"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
@@ -15,6 +15,9 @@ class Settings(BaseSettings):
 
     # TMAP
     tmap_app_key: str = ""
+
+    # Kakao REST API
+    kakao_rest_api_key: str = ""
 
     # 로깅
     log_level: str = "INFO"
