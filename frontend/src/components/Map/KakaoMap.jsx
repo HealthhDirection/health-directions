@@ -60,13 +60,21 @@ export default function KakaoMap({
     } else {
       const existing = document.querySelector(`script[data-kakao-maps]`);
       if (existing) {
-        existing.addEventListener("load", initMap);
+        // 이미 스크립트가 있으나 아직 로드 중인 경우만 리스너 추가
+        // (로드 완료된 경우엔 window.kakao?.maps 분기에서 처리됨)
+        if (!existing.dataset.loaded) {
+          existing.addEventListener("load", initMap);
+        }
         return;
       }
       const script = document.createElement("script");
       script.setAttribute("data-kakao-maps", "1");
-      script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${apiKey}&libraries=services&autoload=false`;
-      script.onload = () => { console.log("[KakaoMap] SDK 스크립트 로드됨"); initMap(); };
+      script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${apiKey}&libraries=services&autoload=false`;
+      script.onload = () => {
+        script.dataset.loaded = "1";
+        console.log("[KakaoMap] SDK 스크립트 로드됨");
+        initMap();
+      };
       script.onerror = (e) => console.error("[KakaoMap] SDK 스크립트 로드 실패", e);
       document.head.appendChild(script);
       console.log("[KakaoMap] 스크립트 추가됨, src:", script.src);
