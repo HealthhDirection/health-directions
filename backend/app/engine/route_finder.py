@@ -17,6 +17,9 @@ BIKE_STATION_SEARCH_RADIUS_M = 400
 WALK_ONLY_MAX_DIST_M = 3000
 INTERSECTION_SEARCH_RADIUS_M = 100  # 경로 상 교차로 검색 반경
 
+# TMAP 경로 캐시: 좌표를 소수점 3자리(약 100m)로 스냅하여 키 생성
+TMAP_CACHE_TTL = 3600  # 1시간
+
 # 교차로 100m 그리드 캐시 설정
 # 서울 위도 37.5° 기준: 0.001° ≈ 111m(위도) / 88m(경도)
 GRID_STEP = 0.001
@@ -69,6 +72,10 @@ class RouteFinder:
 
         return routes
 
+    def _tmap_cache_key(self, olat: float, olng: float, dlat: float, dlng: float) -> str:
+        """좌표를 소수점 3자리로 스냅하여 Redis 캐시 키를 생성한다 (약 100m 단위)."""
+        return f"tmap:route:{olat:.3f},{olng:.3f}:{dlat:.3f},{dlng:.3f}"
+
     def _fetch_tmap_route(
         self,
         origin_lat: float,
@@ -76,10 +83,20 @@ class RouteFinder:
         dest_lat: float,
         dest_lng: float,
     ) -> dict | None:
-        """TMAP 대중교통 API를 호출하여 기본 경로 정보를 반환한다."""
+        """TMAP 대중교통 API를 호출하여 기본 경로 정보를 반환한다. Redis 캐시 우선."""
         if not settings.tmap_app_key:
             logger.warning("TMAP API 키가 설정되지 않았습니다.")
             return None
+
+        # Redis 캐시 확인
+        cache_key = self._tmap_cache_key(origin_lat, origin_lng, dest_lat, dest_lng)
+        try:
+            cached = self.redis.get(cache_key)
+            if cached:
+                logger.info("TMAP 캐시 히트: {}", cache_key)
+                return json.loads(cached)
+        except Exception as e:
+            logger.warning("TMAP 캐시 조회 실패: {}", e)
 
         payload = {
             "startX": str(origin_lng),
@@ -107,7 +124,14 @@ class RouteFinder:
             logger.error("TMAP API 알 수 없는 오류: {}", str(e))
             return None
 
-        return self._parse_tmap_response(data)
+        parsed = self._parse_tmap_response(data)
+        if parsed:
+            try:
+                self.redis.setex(cache_key, TMAP_CACHE_TTL, json.dumps(parsed))
+                logger.info("TMAP 캐시 저장: {}", cache_key)
+            except Exception as e:
+                logger.warning("TMAP 캐시 저장 실패: {}", e)
+        return parsed
 
     def _parse_tmap_response(self, data: dict) -> dict | None:
         """TMAP 응답에서 경로 정보를 파싱한다."""
@@ -117,37 +141,31 @@ class RouteFinder:
             logger.warning("TMAP 응답 파싱 실패: 유효한 itinerary 없음")
             return None
 
-        # duration (초) → 분 변환
-        duration_min = itinerary.get("duration", 0) / 60.0
+        # totalTime (초) → 분 변환 (TMAP 실제 응답 키)
+        duration_min = itinerary.get("totalTime", 0) / 60.0
 
         # legs에서 도보 거리 합산 및 환승 수 계산
         legs = itinerary.get("legs", [])
-        walk_dist_m = 0.0
-        transfers = 0
+        walk_dist_m = float(itinerary.get("totalWalkDistance", 0))
+        transfers = max(0, int(itinerary.get("transferCount", 0)))
         polyline: list = []
 
         for leg in legs:
             mode = leg.get("mode", "")
-            if mode == "WALK":
-                walk_dist_m += float(leg.get("distance", 0))
-            elif mode in ("BUS", "SUBWAY", "RAIL"):
-                transfers += 1
 
-            # 좌표 리스트 추출 (형식: "경도1 위도1 경도2 위도2 ...")
-            points = leg.get("passShape", {}).get("linestring", "")
+            # 좌표 리스트 추출 (형식: "경도,위도 경도,위도 ...")
+            pass_shape = leg.get("passShape") or {}
+            points = pass_shape.get("linestring", "")
             if points:
-                parts = points.split()
-                for i in range(0, len(parts) - 1, 2):
+                for point in points.split():
                     try:
+                        lng_str, lat_str = point.split(",")
                         polyline.append({
-                            "lng": float(parts[i]),
-                            "lat": float(parts[i + 1]),
+                            "lng": float(lng_str),
+                            "lat": float(lat_str),
                         })
-                    except ValueError:
+                    except (ValueError, TypeError):
                         pass
-
-        # 환승 수는 대중교통 leg 수 - 1 (최소 0)
-        transfers = max(0, transfers - 1)
 
         return {
             "tmap_duration_min": round(duration_min, 2),
