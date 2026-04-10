@@ -35,10 +35,14 @@ function PlaceInput({ placeholder, icon, value, onChange, onSelect }) {
     const ps = new window.kakao.maps.services.Places();
     ps.keywordSearch(q, (data, status) => {
       if (status === window.kakao.maps.services.Status.OK) {
-        setSuggestions(data.slice(0, 5));
+        setSuggestions(data.slice(0, 8));
       } else {
         setSuggestions([]);
       }
+    }, {
+      location: new window.kakao.maps.LatLng(37.5509, 126.8495),
+      radius: 5000,
+      sort: window.kakao.maps.services.SortBy.DISTANCE,
     });
   };
 
