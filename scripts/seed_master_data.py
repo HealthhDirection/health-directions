@@ -228,53 +228,52 @@ RTI_BASE_URL = "https://apis.data.go.kr/B551982/rti"
 RTI_CRSRD_MAP_URL = f"{RTI_BASE_URL}/crsrd_map_info"
 SEOUL_STDG_CD = "1100000000"  # 서울특별시 — RTI API가 지원하는 최소 단위
 
-# TMAP POI 검색 (경도 보완용)
-TMAP_POIS_URL = "https://apis.openapi.sk.com/tmap/pois"
+# Kakao 키워드 검색 (경도 보완용)
+KAKAO_KEYWORD_URL = "https://dapi.kakao.com/v2/local/search/keyword.json"
 
 
-def _geocode_longitude_tmap(name: str, lat_hint: float, tmap_app_key: str, client: httpx.Client) -> float | None:
-    """TMAP POI 검색으로 교차로명의 경도를 조회한다.
+def _geocode_longitude_kakao(name: str, lat_hint: float, kakao_rest_key: str, client: httpx.Client) -> float | None:
+    """Kakao 키워드 검색으로 교차로명의 경도를 조회한다.
 
     RTI API가 경도(mapCtptIntLot)를 미제공하므로 교차로명 + 위도로 보완.
     반환값이 None이면 geocoding 실패를 의미한다.
     """
     try:
         resp = client.get(
-            TMAP_POIS_URL,
+            KAKAO_KEYWORD_URL,
             params={
-                "version": "1",
-                "searchKeyword": name,
-                "appKey": tmap_app_key,
-                "count": 5,
+                "query": name,
+                "size": 5,
             },
+            headers={"Authorization": f"KakaoAK {kakao_rest_key}"},
             timeout=5.0,
         )
         resp.raise_for_status()
         data = resp.json()
-        pois = data.get("searchPoiInfo", {}).get("pois", {}).get("poi", [])
-        if not pois:
+        documents = data.get("documents", [])
+        if not documents:
             return None
 
-        # 위도가 가장 가까운 POI 선택
+        # 위도가 가장 가까운 결과 선택
         best_lng: float | None = None
         best_diff = float("inf")
-        for poi in pois:
+        for doc in documents:
             try:
-                poi_lat = float(poi.get("noorLat", 0))
-                poi_lng = float(poi.get("noorLon", 0))
+                doc_lat = float(doc.get("y", 0))
+                doc_lng = float(doc.get("x", 0))
             except (ValueError, TypeError):
                 continue
-            diff = abs(poi_lat - lat_hint)
+            diff = abs(doc_lat - lat_hint)
             if diff < best_diff:
                 best_diff = diff
-                best_lng = poi_lng
+                best_lng = doc_lng
 
-        # 위도 차이가 0.05도 이상이면 너무 멀어서 제외
+        # 위도 차이가 0.05도(약 5km) 이상이면 너무 멀어서 제외
         if best_diff > 0.05:
             return None
         return best_lng
     except Exception as e:
-        logger.debug(f"TMAP geocoding 실패 ({name}): {e}")
+        logger.debug(f"Kakao geocoding 실패 ({name}): {e}")
         return None
 
 
@@ -356,11 +355,11 @@ def seed_intersections(conn, api_key: str) -> int:
         )
         return 0
 
-    logger.info(f"강서구 범위 교차로 {len(filtered)}건, TMAP 경도 보완 시작...")
+    logger.info(f"강서구 범위 교차로 {len(filtered)}건, Kakao 경도 보완 시작...")
 
-    # TMAP geocoding으로 경도 보완 (tmap_app_key가 있을 때만)
-    tmap_client = httpx.Client(timeout=5.0)
-    tmap_key = settings.tmap_app_key
+    # Kakao geocoding으로 경도 보완
+    kakao_client = httpx.Client(timeout=5.0)
+    kakao_key = settings.kakao_rest_api_key
     geocoded = 0
 
     records = []
@@ -373,10 +372,14 @@ def seed_intersections(conn, api_key: str) -> int:
             continue
 
         lng: float | None = None
-        if tmap_key and name:
-            lng = _geocode_longitude_tmap(name, lat, tmap_key, tmap_client)
+        if kakao_key and name:
+            lng = _geocode_longitude_kakao(name, lat, kakao_key, kakao_client)
             if lng is not None:
-                geocoded += 1
+                # 강서구 경도 범위 벗어나면 제외
+                if not (GANGSEO_LNG_MIN <= lng <= GANGSEO_LNG_MAX):
+                    lng = None
+                else:
+                    geocoded += 1
 
         records.append({
             "intersection_id": intersection_id,
@@ -385,8 +388,8 @@ def seed_intersections(conn, api_key: str) -> int:
             "longitude": lng,
         })
 
-    tmap_client.close()
-    logger.info(f"TMAP geocoding: {geocoded}/{len(records)}건 경도 보완 완료")
+    kakao_client.close()
+    logger.info(f"Kakao geocoding: {geocoded}/{len(records)}건 경도 보완 완료")
 
     if not records:
         logger.warning("저장할 교차로 레코드 없음")
@@ -400,7 +403,7 @@ def seed_intersections(conn, api_key: str) -> int:
         ON CONFLICT (intersection_id) DO UPDATE SET
             intersection_name = EXCLUDED.intersection_name,
             latitude          = EXCLUDED.latitude,
-            longitude         = COALESCE(EXCLUDED.longitude, master.intersections.longitude)
+            longitude         = EXCLUDED.longitude
     """
     try:
         with conn.cursor() as cur:
