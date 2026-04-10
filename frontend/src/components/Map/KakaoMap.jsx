@@ -10,10 +10,10 @@
  *   onMapClick   (latLng) => void
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const GANGSEO_CENTER = { lat: 37.5509, lng: 126.8495 };
-const DEFAULT_ZOOM = 14;
+const DEFAULT_ZOOM = 7;
 
 export default function KakaoMap({
   center = GANGSEO_CENTER,
@@ -26,6 +26,7 @@ export default function KakaoMap({
   const mapRef = useRef(null);
   const markersRef = useRef([]);
   const polylinesRef = useRef([]);
+  const [mapReady, setMapReady] = useState(false);
 
   // SDK 로드 및 지도 초기화
   useEffect(() => {
@@ -36,16 +37,14 @@ export default function KakaoMap({
     }
 
     const initMap = () => {
-      console.log("[KakaoMap] initMap 호출됨, window.kakao:", !!window.kakao);
       window.kakao.maps.load(() => {
-        console.log("[KakaoMap] kakao.maps.load 콜백 실행, container:", containerRef.current);
+
         const mapOptions = {
           center: new window.kakao.maps.LatLng(center.lat, center.lng),
           level: zoom,
         };
         mapRef.current = new window.kakao.maps.Map(containerRef.current, mapOptions);
-        console.log("[KakaoMap] 지도 생성 완료");
-
+        setMapReady(true);
         if (onMapClick) {
           window.kakao.maps.event.addListener(mapRef.current, "click", (mouseEvent) => {
             const latlng = mouseEvent.latLng;
@@ -72,12 +71,10 @@ export default function KakaoMap({
       script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${apiKey}&libraries=services&autoload=false`;
       script.onload = () => {
         script.dataset.loaded = "1";
-        console.log("[KakaoMap] SDK 스크립트 로드됨");
         initMap();
       };
       script.onerror = (e) => console.error("[KakaoMap] SDK 스크립트 로드 실패", e);
       document.head.appendChild(script);
-      console.log("[KakaoMap] 스크립트 추가됨, src:", script.src);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -85,6 +82,7 @@ export default function KakaoMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !window.kakao?.maps) return;
+
 
     markersRef.current.forEach((m) => m.setMap(null));
     markersRef.current = [];
@@ -106,7 +104,7 @@ export default function KakaoMap({
         markersRef.current.push(marker);
       }
     });
-  }, [markers]);
+  }, [markers, mapReady]);
 
   // 폴리라인 동기화
   useEffect(() => {
@@ -128,7 +126,7 @@ export default function KakaoMap({
       });
       polylinesRef.current.push(polyline);
     });
-  }, [polylines]);
+  }, [polylines, mapReady]);
 
   return (
     <div

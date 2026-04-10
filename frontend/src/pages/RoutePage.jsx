@@ -83,7 +83,7 @@ export default function RoutePage() {
       <div className="route-map-area">
         <KakaoMap
           center={mapCenter}
-          zoom={13}
+          zoom={7}
           markers={allMarkers}
           polylines={polylines}
         />
