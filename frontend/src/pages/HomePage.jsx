@@ -12,7 +12,7 @@ import api from "../utils/api";
 export default function HomePage() {
   const [bikeMarkers, setBikeMarkers] = useState([]);
   const [busMarkers, setBusMarkers]   = useState([]);
-  const [showBike, setShowBike]       = useState(true);
+  const [showBike, setShowBike]       = useState(false);
   const [showBus, setShowBus]         = useState(false);
   const [bikeLoading, setBikeLoading] = useState(false);
   const [busLoading, setBusLoading]   = useState(false);
